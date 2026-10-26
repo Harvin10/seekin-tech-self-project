@@ -264,29 +264,23 @@
   function drawEditor() {
     const { kind, item } = ctx;
     const p = ctx.preset || {};
-    $('#sheet-title').textContent = item ? (kind === 'task' ? 'Ubah tugas' : 'Ubah acara') : 'Tambah';
-    const sw = !item ? `
-      <div class="segmented" role="radiogroup" aria-label="Jenis">
-        <label><input type="radio" name="kind" value="task" ${kind === 'task' ? 'checked' : ''}><span>${icon('check')}Tugas</span></label>
-        <label><input type="radio" name="kind" value="event" ${kind === 'event' ? 'checked' : ''}><span>${icon('check')}Acara</span></label>
-      </div>` : '';
+    $('#sheet-title').textContent = kind === 'task' ? (item ? 'Ubah tugas' : 'Tugas baru') : (item ? 'Ubah acara' : 'Acara baru');
+    const sw = '';
     let fields;
     if (kind === 'task') {
+      // A to-do: title, description, and an optional date and time. The quadrant is not asked:
+      // new tasks start in Q4 (or the quadrant whose + was tapped) and are moved by dragging.
       const t = item || {};
-      // New tasks start in Q4; they are dragged to a more important quadrant when they earn it.
       const q = item ? t.quadrant : (p.quadrant || 'q4');
       fields = `
-        <div><label class="label" for="f-title">Judul</label><input class="field" id="f-title" name="title" value="${esc(t.title)}" maxlength="300" autocomplete="off" enterkeyhint="done" placeholder="Mau mengerjakan apa?"></div>
-        <fieldset class="qfs" aria-label="Kuadran"><span class="label">Kuadran</span><div class="qpick">
-          ${QK.map((k) => `<label class="qopt ${k}"><input type="radio" name="quadrant" value="${k}" ${q === k ? 'checked' : ''}><span><b>${QS[k].code} ${QS[k].name}</b><small>${QS[k].sub}</small></span></label>`).join('')}
-          <label class="qopt none"><input type="radio" name="quadrant" value="" ${!q ? 'checked' : ''}><span><b>Belum dipilah</b></span></label>
-        </div></fieldset>
+        <div><label class="label" for="f-title">Judul</label><input class="field" id="f-title" name="title" value="${esc(t.title)}" maxlength="300" autocomplete="off" enterkeyhint="next" placeholder="Mau mengerjakan apa?"></div>
+        <div><label class="label" for="f-notes">Deskripsi <span class="opt">opsional</span></label><textarea class="field" id="f-notes" name="notes" maxlength="5000" placeholder="Detail, link, catatan…">${esc(t.notes || '')}</textarea></div>
         <div class="fieldset-row">
-          <div><label class="label" for="f-due">Tenggat</label><input class="field num" type="date" id="f-due" name="due" value="${esc(item ? t.due || '' : p.due || '')}"></div>
-          <div><label class="label" for="f-time">Jam</label><input class="field num" type="time" id="f-time" name="time" value="${esc(t.time || '')}"></div>
+          <div><label class="label" for="f-due">Tanggal <span class="opt">opsional</span></label><input class="field num" type="date" id="f-due" name="due" value="${esc(item ? t.due || '' : p.due || '')}"></div>
+          <div><label class="label" for="f-time">Jam <span class="opt">opsional</span></label><input class="field num" type="time" id="f-time" name="time" value="${esc(t.time || '')}"></div>
         </div>
-        <div id="deleg" ${q === 'q3' ? '' : 'hidden'}><label class="label" for="f-deleg">Diserahkan ke</label><input class="field" id="f-deleg" name="delegateTo" value="${esc(t.delegateTo || '')}" maxlength="100" autocomplete="off" placeholder="Nama orangnya"></div>
-        <div><label class="label" for="f-notes">Catatan</label><textarea class="field" id="f-notes" name="notes" maxlength="5000">${esc(t.notes || '')}</textarea></div>`;
+        ${q === 'q3' ? `<div><label class="label" for="f-deleg">Diserahkan ke <span class="opt">opsional</span></label><input class="field" id="f-deleg" name="delegateTo" value="${esc(t.delegateTo || '')}" maxlength="100" autocomplete="off" placeholder="Nama orangnya"></div>` : ''}
+        ${item ? '' : `<p class="hint">Masuk ke ${QS[q].code} ${QS[q].name}. Seret ke kuadran lain kapan saja.</p>`}`;
     } else {
       const e = item || {};
       fields = `
@@ -301,7 +295,7 @@
     $('#sheet-body').innerHTML = `<div class="fields">${sw}${fields}<p class="error-text" id="f-err" hidden></p></div>`;
     $('#sheet-foot').innerHTML = item
       ? `<button type="button" class="icon-btn tonal pressable" id="f-del" aria-label="Hapus">${icon('trash')}</button><button type="submit" class="btn filled lg pressable">Simpan</button>`
-      : `<button type="submit" class="btn filled lg block pressable">${kind === 'task' ? 'Tambah tugas' : 'Tambah acara'}</button>`;
+      : `<button type="submit" class="btn filled lg block pressable">${kind === 'task' ? 'Tambah' : 'Tambah acara'}</button>`;
   }
   $('#sheet-body').addEventListener('change', (e) => {
     if (e.target.name === 'kind') {
@@ -330,8 +324,13 @@
     if (!title) { $('#f-title').setAttribute('aria-invalid', 'true'); err.textContent = 'Isi judulnya dulu.'; err.hidden = false; $('#f-title').focus(); return; }
     const { kind, item } = ctx;
     if (kind === 'task') {
-      const quadrant = v('quadrant') || null;
-      const data = { title, quadrant, due: v('due') || null, time: v('time') || null, notes: v('notes'), delegateTo: quadrant === 'q3' ? v('delegateTo') || null : null };
+      const quadrant = item ? item.quadrant || null : (ctx.preset && ctx.preset.quadrant) || 'q4';
+      const due = v('due') || null, time = v('time') || null;
+      if (time && !due) { err.textContent = 'Pilih tanggalnya juga, supaya jamnya bisa masuk kalender.'; err.hidden = false; $('#f-due').focus(); return; }
+      const data = { title, due, time, notes: v('notes') };
+      if (quadrant === 'q3') data.delegateTo = v('delegateTo') || null;
+      if (!item) data.quadrant = quadrant;
+      if (!item && !['semua', 'tanpa-tanggal'].includes(S.listTab) && !(S.listTab === 'hari-ini' && due === today())) S.listTab = 'semua';
       if (item) patchTask(item.id, data); else createTask(data);
       snackbar(item ? 'Tugas disimpan.' : 'Tugas ditambahkan.');
     } else {
@@ -371,7 +370,7 @@
     const sub = [];
     if (t.due) sub.push(`<span class="meta num ${over ? 'over' : ''}">${icon('clock', 'xs')}${fmtDate(t.due)}${t.time ? ' · ' + esc(t.time) : ''}</span>`);
     if (t.delegateTo) sub.push(`<span class="meta">${icon('handoff', 'xs')}${esc(t.delegateTo)}</span>`);
-    if (t.notes) sub.push(`<span class="meta">${icon('note', 'xs')}Catatan</span>`);
+    if (t.notes) sub.push(`<span class="meta desc">${icon('note', 'xs')}<span>${esc(t.notes.split('\n')[0])}</span></span>`);
     const tag = showQ ? (t.quadrant ? `<span class="tag ${t.quadrant}">${QS[t.quadrant].code}</span>` : `<span class="tag plain">Pilah</span>`) : '';
     return `<li class="row ${t.done ? 'done' : ''}" data-id="${t.id}">
       <button type="button" class="check" role="checkbox" aria-checked="${!!t.done}" data-act="toggle" data-id="${t.id}" aria-label="${esc(t.title)}: tandai ${t.done ? 'belum selesai' : 'selesai'}"><span class="box">${icon('check')}</span></button>
@@ -436,8 +435,8 @@
     // One timeline for the day: events and timed tasks by time, then tasks without a time.
     const rows = [
       ...(evBy[sel] || []).map((e) => ({ at: e.start || '', html: eventRow(e), done: 0, q: -1 })),
-      ...(tasksBy[sel] || []).map((x) => ({ at: x.time || '~', html: taskRow(x), done: x.done ? 1 : 0, q: qOrder(x) })),
-    ].sort((a, b) => a.done - b.done || a.at.localeCompare(b.at) || a.q - b.q).map((r) => r.html);
+      ...(tasksBy[sel] || []).map((x) => ({ at: x.time || '99:99', html: taskRow(x), done: x.done ? 1 : 0, q: qOrder(x) })),
+    ].sort((a, b) => a.done - b.done || (a.at < b.at ? -1 : a.at > b.at ? 1 : 0) || a.q - b.q).map((r) => r.html);
     const head = `<div class="cal-head">
             <h2>${MONF[m - 1]} <span class="num">${y}</span></h2>
             <button type="button" class="btn text pressable" data-act="month-today">Hari ini</button>
