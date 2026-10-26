@@ -1,0 +1,12 @@
+name = "papan-prioritas"
+pages_build_output_dir = "./public"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "papan-prioritas"
+database_id = "76bb3874-85a8-4aab-98e0-bee27fb4b27b"
+
+# Pendaftaran terbuka hanya selama belum ada akun. Ubah ke "true" bila ingin menambah akun lain.
+[vars]
+ALLOW_SIGNUP = "false"
