@@ -2,6 +2,15 @@
 
 Matriks Eisenhower, daftar tugas dan kalender dalam satu PWA. Berjalan di Cloudflare Pages dengan database D1, dan memakai design system Seekin ERP (token, Plus Jakarta Sans, bottom nav dengan tombol Tambah, header gaya e-wallet, sheet bawah).
 
+## Tampilan
+
+- **Layar lebar (tablet mendatar, laptop, mulai 960px):** satu layar penuh. Matriks Eisenhower di kiri, daftar tugas di kanan atas, kalender di kanan bawah. Tombol layar penuh ada di bilah atas.
+- **HP:** empat tab di bawah: Matriks, Tugas, Kalender, Lainnya.
+- **Seret dan lepas:** di HP dan tablet, tahan tugas sebentar lalu geser. Di laptop, klik lalu geser.
+  - Lepas di kuadran untuk memindahnya.
+  - Lepas di *Belum dipilah* untuk mengeluarkannya dari kuadran.
+  - Lepas di tanggal kalender untuk mengubah tenggatnya. Acara juga bisa diseret ke tanggal lain.
+
 ## Isi folder
 
 | Path | Isi |

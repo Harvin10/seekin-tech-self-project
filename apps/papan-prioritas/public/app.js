@@ -372,13 +372,76 @@
     if (t.delegateTo) sub.push(`<span class="meta">${icon('handoff', 'xs')}${esc(t.delegateTo)}</span>`);
     if (t.notes) sub.push(`<span class="meta">${icon('note', 'xs')}Catatan</span>`);
     const tag = showQ ? (t.quadrant ? `<span class="tag ${t.quadrant}">${QS[t.quadrant].code}</span>` : `<span class="tag plain">Pilah</span>`) : '';
-    return `<li class="row ${t.done ? 'done' : ''}" data-id="${t.id}" ${drag ? 'draggable="true"' : ''}>
+    return `<li class="row ${t.done ? 'done' : ''}" data-id="${t.id}">
       <button type="button" class="check" role="checkbox" aria-checked="${!!t.done}" data-act="toggle" data-id="${t.id}" aria-label="${esc(t.title)}: tandai ${t.done ? 'belum selesai' : 'selesai'}"><span class="box">${icon('check')}</span></button>
       <button type="button" class="row-main" data-act="edit-task" data-id="${t.id}"><span class="row-title">${esc(t.title)}</span><span class="row-sub">${sub.join('')}</span></button>
       ${tag ? `<span class="row-end">${tag}</span>` : ''}
     </li>`;
   }
-  const drag = window.matchMedia('(pointer: fine)').matches;
+  const eventRow = (e) => `<li class="row event-row" data-eid="${e.id}"><span class="time-col">${e.start ? esc(e.start) + (e.end ? '–' + esc(e.end) : '') : 'Seharian'}</span><button type="button" class="row-main" data-act="edit-event" data-id="${e.id}"><span class="row-title">${esc(e.title)}</span>${e.notes ? `<span class="row-sub"><span class="meta">${icon('note', 'xs')}Catatan</span></span>` : ''}</button></li>`;
+
+  const LIST_LABELS = { 'hari-ini': 'Hari ini', terlambat: 'Terlambat', mendatang: 'Mendatang', 'tanpa-tanggal': 'Tanpa tanggal', selesai: 'Selesai' };
+  const EMPTY_LIST = {
+    'hari-ini': ['Tidak ada yang jatuh tempo hari ini', 'Tugas dengan tenggat hari ini muncul di sini.'],
+    terlambat: ['Tidak ada yang terlambat', 'Tugas yang lewat tenggat muncul di sini.'],
+    mendatang: ['Belum ada tugas mendatang', 'Beri tenggat pada tugas supaya muncul di sini.'],
+    'tanpa-tanggal': ['Semua tugas sudah bertanggal', 'Tugas tanpa tenggat muncul di sini.'],
+    selesai: ['Belum ada yang selesai', 'Centang tugas untuk menandainya selesai.'],
+  };
+  function listGroups(qfilter) {
+    const t = today();
+    const f = (arr) => (qfilter === 'none' ? arr.filter((x) => !x.quadrant) : qfilter === 'all' ? arr : arr.filter((x) => x.quadrant === qfilter));
+    const o = f(open());
+    return {
+      'hari-ini': o.filter((x) => x.due === t),
+      terlambat: o.filter((x) => x.due && x.due < t),
+      mendatang: o.filter((x) => x.due && x.due > t),
+      'tanpa-tanggal': o.filter((x) => !x.due),
+      selesai: f(S.tasks.filter((x) => x.done)),
+    };
+  }
+  const listTabs = (groups) => Object.keys(LIST_LABELS).map((k) => `<button type="button" role="tab" class="stab ${k === 'terlambat' && groups[k].length ? 'over' : ''}" data-act="list-tab" data-k="${k}" aria-selected="${S.listTab === k}">${LIST_LABELS[k]} <span class="n">${groups[k].length}</span></button>`).join('');
+
+  // The month grid for S.month. Day cells are drop targets: drop a task to set its due date, an event to move it.
+  function calParts(compact) {
+    const [y, m] = S.month.split('-').map(Number);
+    const first = new Date(y, m - 1, 1);
+    const offset = (first.getDay() + 6) % 7;
+    const cells = Math.ceil((offset + new Date(y, m, 0).getDate()) / 7) * 7;
+    const start = new Date(y, m - 1, 1 - offset);
+    const t = today();
+    const tasksBy = {}, evBy = {};
+    S.tasks.forEach((x) => { if (x.due) (tasksBy[x.due] ||= []).push(x); });
+    S.events.forEach((e) => { (evBy[e.date] ||= []).push(e); });
+    let grid = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'].map((d) => `<div class="dow" aria-hidden="true">${d}</div>`).join('');
+    for (let i = 0; i < cells; i++) {
+      const d = new Date(start); d.setDate(start.getDate() + i);
+      const s = ymd(d);
+      const evs = (evBy[s] || []).slice().sort(evSort);
+      const tks = (tasksBy[s] || []).slice().sort((a, b) => a.done - b.done || qOrder(a) - qOrder(b));
+      const items = compact ? [] : [
+        ...evs.map((e) => `<span class="pill">${e.start ? esc(e.start) + ' ' : ''}${esc(e.title)}</span>`),
+        ...tks.map((x) => `<span class="pill ${x.quadrant || 'q4'} ${x.done ? 'done' : ''}">${esc(x.title)}</span>`),
+      ];
+      const dots = [...evs.map(() => '<i class="ev"></i>'), ...tks.filter((x) => !x.done).map((x) => `<i class="${x.quadrant || 'q4'}"></i>`)].slice(0, 4).join('');
+      const label = `${longDate(s)}${evs.length ? `, ${evs.length} acara` : ''}${tks.length ? `, ${tks.length} tugas` : ''}`;
+      grid += `<button type="button" role="gridcell" class="day pressable ${d.getMonth() !== m - 1 ? 'out' : ''} ${s === t ? 'today' : ''}" data-act="pick-day" data-d="${s}" data-drop-day="${s}" aria-selected="${s === S.sel}" aria-label="${label}">
+        <span class="dn">${d.getDate()}</span><span class="dots">${dots}</span>
+        ${compact ? '' : `<span class="day-items">${items.slice(0, 3).join('')}${items.length > 3 ? `<span class="more">+${items.length - 3} lagi</span>` : ''}</span>`}</button>`;
+    }
+    const sel = S.sel;
+    const rows = [
+      ...(evBy[sel] || []).slice().sort(evSort).map(eventRow),
+      ...(tasksBy[sel] || []).slice().sort((a, b) => a.done - b.done || qOrder(a) - qOrder(b)).map((x) => taskRow(x)),
+    ];
+    const head = `<div class="cal-head">
+            <h2>${MONF[m - 1]} <span class="num">${y}</span></h2>
+            <button type="button" class="btn text pressable" data-act="month-today">Hari ini</button>
+            <button type="button" class="icon-btn pressable" data-act="month" data-n="-1" aria-label="Bulan sebelumnya">${icon('left')}</button>
+            <button type="button" class="icon-btn pressable" data-act="month" data-n="1" aria-label="Bulan berikutnya">${icon('right')}</button>
+          </div>`;
+    return { head, grid: `<div class="cal ${compact ? 'compact' : ''}" role="grid" aria-label="${MONF[m - 1]} ${y}">${grid}</div>`, rows };
+  }
 
   function section({ title, count, action, body, cls = '', attrs = '' }) {
     return `<section class="quad ${cls}" ${attrs}>
@@ -387,12 +450,16 @@
     </section>`;
   }
 
-  function topbar(title, { brand = false } = {}) {
+  function statusPill() {
     const pending = outbox.length;
-    const status = !S.online
+    return !S.online
       ? `<span class="offline-pill">${icon('offline', 'xs')}Offline${pending ? ` · ${pending}` : ''}</span>`
       : pending ? `<span class="offline-pill">${icon('refresh', 'xs')}Menyimpan</span>` : '';
-    return `<header class="topbar ${brand ? 'brand' : ''}" id="topbar"><div class="wrap ${S.tab === 'matriks' || S.tab === 'kalender' ? 'wide' : ''} topbar-in"><h1>${title}</h1>${status}</div></header>`;
+  }
+  function topbar(title, { brand = false } = {}) {
+    // On wide screens the other pages open from the board, so they get a way back to it.
+    const back = wideMq.matches ? `<button type="button" class="icon-btn pressable" data-act="tab" data-tab="matriks" aria-label="Kembali ke papan">${icon('left')}</button>` : '';
+    return `<header class="topbar ${brand ? 'brand' : ''}" id="topbar"><div class="wrap ${S.tab === 'matriks' || S.tab === 'kalender' ? 'wide' : ''} topbar-in">${back}<h1>${title}</h1>${statusPill()}</div></header>`;
   }
 
   function viewMatrix() {
@@ -435,35 +502,15 @@
   }
 
   function viewList() {
-    const t = today();
-    let o = open();
-    if (S.qfilter === 'none') o = o.filter((x) => !x.quadrant);
-    else if (S.qfilter !== 'all') o = o.filter((x) => x.quadrant === S.qfilter);
-    let done = S.tasks.filter((x) => x.done);
-    if (S.qfilter === 'none') done = done.filter((x) => !x.quadrant);
-    else if (S.qfilter !== 'all') done = done.filter((x) => x.quadrant === S.qfilter);
-    const groups = {
-      'hari-ini': o.filter((x) => x.due === t),
-      terlambat: o.filter((x) => x.due && x.due < t),
-      mendatang: o.filter((x) => x.due && x.due > t),
-      'tanpa-tanggal': o.filter((x) => !x.due),
-      selesai: done,
-    };
-    const labels = { 'hari-ini': 'Hari ini', terlambat: 'Terlambat', mendatang: 'Mendatang', 'tanpa-tanggal': 'Tanpa tanggal', selesai: 'Selesai' };
-    const tabs = Object.keys(labels).map((k) => `<button type="button" role="tab" class="stab ${k === 'terlambat' && groups[k].length ? 'over' : ''}" data-act="list-tab" data-k="${k}" aria-selected="${S.listTab === k}">${labels[k]} <span class="n">${groups[k].length}</span></button>`).join('');
+    const groups = listGroups(S.qfilter);
+    const tabs = listTabs(groups);
     const chips = [['all', 'Semua'], ...QK.map((k) => [k, `${QS[k].code} ${QS[k].name}`]), ['none', 'Belum dipilah']]
       .map(([k, l]) => `<button type="button" class="chip pressable" data-act="qfilter" data-k="${k}" aria-pressed="${S.qfilter === k}">${icon('check', 'sm')}${l}</button>`).join('');
 
     const list = groups[S.listTab];
     let body;
     if (!list.length) {
-      const msg = {
-        'hari-ini': ['Tidak ada yang jatuh tempo hari ini', 'Tugas dengan tenggat hari ini muncul di sini.'],
-        terlambat: ['Tidak ada yang terlambat', 'Tugas yang lewat tenggat muncul di sini.'],
-        mendatang: ['Belum ada tugas mendatang', 'Beri tenggat pada tugas supaya muncul di sini.'],
-        'tanpa-tanggal': ['Semua tugas sudah bertanggal', 'Tugas tanpa tenggat muncul di sini.'],
-        selesai: ['Belum ada yang selesai', 'Centang tugas untuk menandainya selesai.'],
-      }[S.listTab];
+      const msg = EMPTY_LIST[S.listTab];
       body = `<div class="card"><div class="empty"><span class="tile lg">${icon('list')}</span><h3>${msg[0]}</h3><p>${msg[1]}</p><button type="button" class="btn tonal pressable" data-act="new-task">${icon('plus', 'sm')}Tambah tugas</button></div></div>`;
     } else if (S.listTab === 'mendatang') {
       const by = {};
@@ -484,57 +531,77 @@
   }
 
   function viewCal() {
-    const [y, m] = S.month.split('-').map(Number);
-    const first = new Date(y, m - 1, 1);
-    const offset = (first.getDay() + 6) % 7;
-    const cells = Math.ceil((offset + new Date(y, m, 0).getDate()) / 7) * 7;
-    const start = new Date(y, m - 1, 1 - offset);
-    const t = today();
-    const tasksBy = {}, evBy = {};
-    S.tasks.forEach((x) => { if (x.due) (tasksBy[x.due] ||= []).push(x); });
-    S.events.forEach((e) => { (evBy[e.date] ||= []).push(e); });
-    let grid = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'].map((d) => `<div class="dow" aria-hidden="true">${d}</div>`).join('');
-    for (let i = 0; i < cells; i++) {
-      const d = new Date(start); d.setDate(start.getDate() + i);
-      const s = ymd(d);
-      const evs = (evBy[s] || []).slice().sort(evSort);
-      const tks = (tasksBy[s] || []).slice().sort((a, b) => a.done - b.done || qOrder(a) - qOrder(b));
-      const items = [
-        ...evs.map((e) => `<span class="pill">${e.start ? esc(e.start) + ' ' : ''}${esc(e.title)}</span>`),
-        ...tks.map((x) => `<span class="pill ${x.quadrant || 'q4'} ${x.done ? 'done' : ''}">${esc(x.title)}</span>`),
-      ];
-      const dots = [...evs.map(() => '<i class="ev"></i>'), ...tks.filter((x) => !x.done).map((x) => `<i class="${x.quadrant || 'q4'}"></i>`)].slice(0, 4).join('');
-      const label = `${longDate(s)}${evs.length ? `, ${evs.length} acara` : ''}${tks.length ? `, ${tks.length} tugas` : ''}`;
-      grid += `<button type="button" role="gridcell" class="day pressable ${d.getMonth() !== m - 1 ? 'out' : ''} ${s === t ? 'today' : ''}" data-act="pick-day" data-d="${s}" aria-selected="${s === S.sel}" aria-label="${label}">
-        <span class="dn">${d.getDate()}</span><span class="dots">${dots}</span>
-        <span class="day-items">${items.slice(0, 3).join('')}${items.length > 3 ? `<span class="more">+${items.length - 3} lagi</span>` : ''}</span></button>`;
-    }
-    const sel = S.sel;
-    const sev = (evBy[sel] || []).slice().sort(evSort);
-    const stk = (tasksBy[sel] || []).slice().sort((a, b) => a.done - b.done || qOrder(a) - qOrder(b));
-    const rows = [
-      ...sev.map((e) => `<li class="row event-row"><span class="time-col">${e.start ? esc(e.start) + (e.end ? '–' + esc(e.end) : '') : 'Seharian'}</span><button type="button" class="row-main" data-act="edit-event" data-id="${e.id}"><span class="row-title">${esc(e.title)}</span>${e.notes ? `<span class="row-sub"><span class="meta">${icon('note', 'xs')}Catatan</span></span>` : ''}</button></li>`),
-      ...stk.map((x) => taskRow(x)),
-    ];
+    const cal = calParts(false);
     return `
       ${topbar('Kalender')}
       <main class="wrap wide stack">
         ${banner()}
-        <div class="card">
-          <div class="cal-head">
-            <h2>${MONF[m - 1]} <span class="num">${y}</span></h2>
-            <button type="button" class="btn text pressable" data-act="month-today">Hari ini</button>
-            <button type="button" class="icon-btn pressable" data-act="month" data-n="-1" aria-label="Bulan sebelumnya">${icon('left')}</button>
-            <button type="button" class="icon-btn pressable" data-act="month" data-n="1" aria-label="Bulan berikutnya">${icon('right')}</button>
-          </div>
-          <div class="cal" role="grid" aria-label="${MONF[m - 1]} ${y}">${grid}</div>
-        </div>
+        <div class="card">${cal.head}${cal.grid}</div>
         ${section({
-          title: esc(longDate(sel)),
-          action: `<button type="button" class="link-btn pressable" data-act="new-event" data-d="${sel}">Tambah acara</button>`,
-          body: rows.length ? rows.join('') : `<li class="empty-row">Belum ada acara atau tugas.</li>`,
+          title: esc(longDate(S.sel)),
+          action: `<button type="button" class="link-btn pressable" data-act="new-event" data-d="${S.sel}">Tambah acara</button>`,
+          body: cal.rows.length ? cal.rows.join('') : `<li class="empty-row">Belum ada acara atau tugas.</li>`,
         })}
       </main>`;
+  }
+
+  // Wide screens (tablet landscape, desktop): the matrix fills the screen, the to-do list and the
+  // calendar sit in a column on the right. Everything is one screen; each list scrolls on its own.
+  function viewBoard() {
+    const c = counts();
+    const o = open();
+    const inbox = o.filter((t) => !t.quadrant).sort(byDue);
+    const quad = (k) => {
+      const list = o.filter((t) => t.quadrant === k).sort(byDue);
+      return `<section class="bq ${k}" data-drop="${k}" aria-labelledby="bq-${k}">
+        <header class="bq-h"><span class="tag ${k}">${QS[k].code}</span><div class="bq-t"><h2 id="bq-${k}">${QS[k].name}</h2><p>${QS[k].sub}</p></div><span class="bq-n num">${list.length}</span>
+          <button type="button" class="icon-btn pressable" data-act="new-task" data-q="${k}" aria-label="Tambah ke ${QS[k].name}">${icon('plus')}</button></header>
+        <ul class="bq-list" data-scroll="${k}">${list.length ? list.map((t) => taskRow(t, { showQ: false })).join('') : `<li class="empty-row">Belum ada tugas. Seret ke sini atau ketuk +.</li>`}</ul>
+      </section>`;
+    };
+    const groups = listGroups('all');
+    const list = groups[S.listTab].slice();
+    if (S.listTab === 'selesai') list.sort((a, b) => (b.doneAt || '').localeCompare(a.doneAt || ''));
+    else if (S.listTab === 'tanpa-tanggal') list.sort((a, b) => qOrder(a) - qOrder(b) || (a.createdAt || '').localeCompare(b.createdAt || ''));
+    else list.sort((a, b) => byDue(a, b) || qOrder(a) - qOrder(b));
+    const cal = calParts(true);
+    const pulse = [`<b>${c.q1}</b> penting &amp; mendesak`, c.over ? `<b class="over">${c.over}</b> terlambat` : null, `<b>${c.dueToday}</b> jatuh tempo hari ini`, `<b>${c.evToday}</b> acara hari ini`].filter(Boolean).join('<span aria-hidden="true"> · </span>');
+    const fsOn = !!document.fullscreenElement;
+    return `
+      <header class="board-top"><div class="board-top-in">
+        <h1>Papan Prioritas</h1>
+        <p class="board-pulse num">${pulse}</p>
+        ${statusPill()}
+        ${document.fullscreenEnabled ? `<button type="button" class="icon-btn pressable" data-act="fullscreen" aria-label="${fsOn ? 'Keluar layar penuh' : 'Layar penuh'}">${icon(fsOn ? 'minimize' : 'maximize')}</button>` : ''}
+        <button type="button" class="icon-btn pressable" data-act="tab" data-tab="lainnya" aria-label="Lainnya">${icon('menu')}</button>
+        <button type="button" class="btn filled pressable" data-act="new-task">${icon('plus', 'sm')}Tambah</button>
+      </div></header>
+      ${S.updateReady ? `<div class="board-banner">${banner()}</div>` : ''}
+      <div class="board">
+        <section class="board-matrix" aria-label="Matriks Eisenhower">
+          ${inbox.length ? `<div class="inbox-strip" data-drop="none"><span class="strip-l">Belum dipilah <span class="num">${inbox.length}</span></span>
+            <ul class="strip-list scroll-row">${inbox.map((t) => `<li class="row strip-task" data-id="${t.id}"><button type="button" class="row-main" data-act="edit-task" data-id="${t.id}"><span class="row-title">${esc(t.title)}</span></button></li>`).join('')}</ul></div>` : ''}
+          <div class="bm-grid">
+            <span class="corner"></span><div class="axis">Mendesak</div><div class="axis">Tidak mendesak</div>
+            <div class="axis v">Penting</div>${quad('q1')}${quad('q2')}
+            <div class="axis v">Tidak penting</div>${quad('q3')}${quad('q4')}
+          </div>
+        </section>
+        <aside class="board-side">
+          <section class="side-card side-todo" aria-labelledby="side-todo-h">
+            <div class="side-h"><h2 id="side-todo-h">Tugas</h2></div>
+            <div class="tabs scroll-row" role="tablist" aria-label="Status tugas">${listTabs(groups)}</div>
+            <ul class="side-list" data-scroll="todo-${S.listTab}">${list.length ? list.slice(0, 200).map((x) => taskRow(x)).join('') : `<li class="empty-row">${EMPTY_LIST[S.listTab][0]}.</li>`}</ul>
+          </section>
+          <section class="side-card side-cal" aria-label="Kalender">
+            ${cal.head}${cal.grid}
+            <div class="side-day">
+              <div class="side-day-h"><h3>${esc(fmtDate(S.sel))}</h3><button type="button" class="link-btn pressable" data-act="new-event" data-d="${S.sel}">Tambah acara</button></div>
+              <ul class="side-list" data-scroll="day">${cal.rows.length ? cal.rows.join('') : `<li class="empty-row">Belum ada acara atau tugas.</li>`}</ul>
+            </div>
+          </section>
+        </aside>
+      </div>`;
   }
 
   function viewMore() {
@@ -586,12 +653,23 @@
     </div></nav>`;
   }
 
+  const wideMq = window.matchMedia('(min-width: 960px)');
+  wideMq.addEventListener('change', () => render());
+  let renderLater = false;
+
   function render() {
     if (!S.user || !S.loaded) return;
+    if (DRAG.active) { renderLater = true; return; } // never swap the DOM under a finger mid-drag
     const a = document.activeElement;
     const keepId = a && a.dataset && a.dataset.act ? a.dataset.act + '|' + (a.dataset.id || a.dataset.k || a.dataset.tab || a.dataset.q || a.dataset.d || '') : null;
-    const view = { matriks: viewMatrix, tugas: viewList, kalender: viewCal, lainnya: viewMore }[S.tab]();
-    app.innerHTML = view + bottomNav();
+    // Lists in the board scroll on their own; keep their positions across re-renders.
+    const scrolls = {};
+    app.querySelectorAll('[data-scroll]').forEach((el) => { scrolls[el.dataset.scroll] = el.scrollTop; });
+    const board = wideMq.matches && S.tab !== 'lainnya';
+    document.documentElement.classList.toggle('board-mode', board);
+    const view = board ? viewBoard() : { matriks: viewMatrix, tugas: viewList, kalender: viewCal, lainnya: viewMore }[S.tab]();
+    app.innerHTML = view + (wideMq.matches ? '' : bottomNav());
+    app.querySelectorAll('[data-scroll]').forEach((el) => { if (scrolls[el.dataset.scroll]) el.scrollTop = scrolls[el.dataset.scroll]; });
     // Swatch colours are data, painted through the CSSOM (CSP allows no inline styles).
     app.querySelectorAll('[data-color]').forEach((el) => { el.style.background = el.dataset.color; });
     if (keepId) {
@@ -602,7 +680,7 @@
     syncChrome();
   }
   function syncChrome() {
-    const brand = S.tab === 'matriks';
+    const brand = S.tab === 'matriks' && !wideMq.matches;
     PP.setThemeColor(brand ? getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() : PP.pageColor());
     $('#topbar')?.classList.toggle('scrolled', window.scrollY > (brand ? 40 : 4));
   }
@@ -645,6 +723,10 @@
       }
       case 'refresh': refresh().then(() => snackbar(S.online ? 'Data terbaru sudah dimuat.' : 'Kamu sedang offline.')); break;
       case 'install': S.installEvt.prompt(); S.installEvt.userChoice.finally(() => { S.installEvt = null; render(); }); break;
+      case 'fullscreen':
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+        else document.documentElement.requestFullscreen().catch(() => snackbar('Layar penuh tidak tersedia di sini.'));
+        break;
       case 'update': if (S.updateReady) { wantReload = true; S.updateReady.postMessage('skip-waiting'); } break;
       case 'logout':
         if (outbox.length) confirmAsk('Ada perubahan belum terkirim', `${outbox.length} perubahan akan hilang kalau kamu keluar sekarang. Sambungkan internet dulu supaya tersimpan.`, 'Keluar saja', logout);
@@ -659,30 +741,116 @@
     if (t.name === 'brand') { PP.setBrand(t.value); syncChrome(); }
   });
 
-  // Desktop: drag tasks between quadrants.
-  let dragId = null;
-  app.addEventListener('dragstart', (e) => {
-    const li = e.target.closest?.('.row[data-id]');
-    if (!li) return;
-    dragId = li.dataset.id; li.classList.add('dragging');
-    try { e.dataTransfer.setData('text/plain', dragId); e.dataTransfer.effectAllowed = 'move'; } catch { /* old browsers */ }
+  /* ---------------- drag and drop (touch + mouse) ---------------- */
+  // Touch: press and hold a task for a moment, then move. Mouse: press and move.
+  // Drop on a quadrant to change its quadrant, on "Belum dipilah" to unsort it, or on a calendar
+  // day to set its due date. Events can be dragged to another day.
+  const DRAG = { el: null, id: null, kind: null, pid: null, x0: 0, y0: 0, dx: 0, dy: 0, timer: null, active: false, ghost: null, target: null, suppress: false, scroller: null };
+
+  function dropTargetAt(x, y) {
+    const el = document.elementFromPoint(x, y);
+    const t = el && el.closest('[data-drop], [data-drop-day]');
+    if (!t) return null;
+    if (DRAG.kind === 'event' && t.dataset.dropDay === undefined) return null;
+    return t;
+  }
+  function startDrag(x, y) {
+    clearTimeout(DRAG.timer);
+    const r = DRAG.el.getBoundingClientRect();
+    DRAG.active = true;
+    DRAG.dx = x - r.left; DRAG.dy = y - r.top;
+    const g = DRAG.el.cloneNode(true);
+    g.classList.add('drag-ghost');
+    g.removeAttribute('data-id'); g.removeAttribute('data-eid');
+    g.style.width = r.width + 'px';
+    document.body.appendChild(g);
+    DRAG.ghost = g;
+    DRAG.el.classList.add('dragging');
+    document.documentElement.classList.add('is-dragging');
+    if (navigator.vibrate) { try { navigator.vibrate(12); } catch { /* not allowed */ } }
+    moveDrag(x, y);
+  }
+  function moveDrag(x, y) {
+    DRAG.ghost.style.transform = `translate(${Math.round(x - DRAG.dx)}px, ${Math.round(y - DRAG.dy)}px) rotate(-1.5deg)`;
+    const t = dropTargetAt(x, y);
+    if (t !== DRAG.target) {
+      DRAG.target?.classList.remove('drop');
+      t?.classList.add('drop');
+      DRAG.target = t;
+    }
+    // Near the top or bottom edge, scroll the page (phone layout) so far quadrants can be reached.
+    const edge = 72, speed = y < edge ? -(edge - y) / 4 : y > innerHeight - edge ? (y - (innerHeight - edge)) / 4 : 0;
+    cancelAnimationFrame(DRAG.scroller);
+    if (speed && !wideMq.matches) {
+      const step = () => { window.scrollBy(0, speed); DRAG.scroller = requestAnimationFrame(step); };
+      DRAG.scroller = requestAnimationFrame(step);
+    }
+  }
+  function endDrag(x, y) {
+    const t = dropTargetAt(x, y);
+    const { id, kind } = DRAG;
+    cleanupDrag();
+    DRAG.suppress = true;
+    setTimeout(() => { DRAG.suppress = false; }, 80);
+    if (renderLater) { renderLater = false; render(); }
+    if (!t) return;
+    if (t.dataset.dropDay !== undefined) {
+      const day = t.dataset.dropDay;
+      if (kind === 'event') {
+        const ev = S.events.find((x) => x.id === id);
+        if (ev && ev.date !== day) { patchEvent(id, { date: day }); snackbar(`Acara dipindah ke ${fmtDate(day)}.`, 'Urungkan', () => patchEvent(id, { date: ev.date })); }
+      } else {
+        const tk = S.tasks.find((x) => x.id === id);
+        if (tk && tk.due !== day) { const was = tk.due; patchTask(id, { due: day }); snackbar(`Tenggat jadi ${fmtDate(day)}.`, 'Urungkan', () => patchTask(id, { due: was })); }
+      }
+      S.sel = day;
+      render();
+      return;
+    }
+    const q = t.dataset.drop === 'none' ? null : t.dataset.drop;
+    const tk = S.tasks.find((x) => x.id === id);
+    if (tk && tk.quadrant !== q) {
+      const was = tk.quadrant;
+      patchTask(id, { quadrant: q, delegateTo: q === 'q3' ? tk.delegateTo : null });
+      snackbar(q ? `Dipindah ke ${QS[q].code} ${QS[q].name}.` : 'Dipindah ke Belum dipilah.', 'Urungkan', () => patchTask(id, { quadrant: was }));
+    }
+  }
+  function cleanupDrag() {
+    clearTimeout(DRAG.timer);
+    cancelAnimationFrame(DRAG.scroller);
+    DRAG.ghost?.remove();
+    DRAG.el?.classList.remove('dragging');
+    DRAG.target?.classList.remove('drop');
+    document.documentElement.classList.remove('is-dragging');
+    Object.assign(DRAG, { el: null, id: null, kind: null, pid: null, active: false, ghost: null, target: null, timer: null });
+  }
+
+  app.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || DRAG.el) return;
+    const row = e.target.closest('.row[data-id], .row[data-eid]');
+    if (!row || e.target.closest('.check')) return;
+    Object.assign(DRAG, { el: row, kind: row.dataset.eid ? 'event' : 'task', id: row.dataset.id || row.dataset.eid, pid: e.pointerId, x0: e.clientX, y0: e.clientY });
+    if (e.pointerType !== 'mouse') DRAG.timer = setTimeout(() => { if (DRAG.el) startDrag(DRAG.x0, DRAG.y0); }, 300);
   });
-  app.addEventListener('dragend', () => { dragId = null; app.querySelectorAll('.dragging, .drop').forEach((x) => x.classList.remove('dragging', 'drop')); });
-  app.addEventListener('dragover', (e) => {
-    const z = e.target.closest?.('[data-drop]');
-    if (!z || !dragId) return;
-    e.preventDefault();
-    app.querySelectorAll('.drop').forEach((x) => x !== z && x.classList.remove('drop'));
-    z.classList.add('drop');
+  window.addEventListener('pointermove', (e) => {
+    if (!DRAG.el || e.pointerId !== DRAG.pid) return;
+    if (DRAG.active) { moveDrag(e.clientX, e.clientY); return; }
+    const dist = Math.hypot(e.clientX - DRAG.x0, e.clientY - DRAG.y0);
+    if (e.pointerType === 'mouse') { if (dist > 6) startDrag(e.clientX, e.clientY); }
+    else if (dist > 10) cleanupDrag(); // the finger moved before the hold finished: it is a scroll
   });
-  app.addEventListener('drop', (e) => {
-    const z = e.target.closest?.('[data-drop]');
-    if (!z || !dragId) return;
-    e.preventDefault();
-    const q = z.dataset.drop === 'none' ? null : z.dataset.drop;
-    const t = S.tasks.find((x) => x.id === dragId);
-    if (t && t.quadrant !== q) { patchTask(dragId, { quadrant: q }); snackbar(q ? `Dipindah ke ${QS[q].code} ${QS[q].name}.` : 'Dipindah ke Belum dipilah.'); }
+  window.addEventListener('pointerup', (e) => {
+    if (!DRAG.el || e.pointerId !== DRAG.pid) return;
+    if (DRAG.active) endDrag(e.clientX, e.clientY); else cleanupDrag();
   });
+  window.addEventListener('pointercancel', (e) => { if (DRAG.el && e.pointerId === DRAG.pid) { cleanupDrag(); if (renderLater) { renderLater = false; render(); } } });
+  // While dragging, the finger moves the task, not the page.
+  document.addEventListener('touchmove', (e) => { if (DRAG.active) e.preventDefault(); }, { passive: false });
+  document.addEventListener('contextmenu', (e) => { if (DRAG.el) e.preventDefault(); });
+  // A drag ends with a click on the row underneath; swallow it so the editor does not open.
+  app.addEventListener('click', (e) => { if (DRAG.suppress) { e.preventDefault(); e.stopPropagation(); DRAG.suppress = false; } }, true);
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && DRAG.active) cleanupDrag(); });
+  document.addEventListener('fullscreenchange', () => render());
 
   /* ---------------- auth ---------------- */
   let authMode = 'login', signupOpen = false;

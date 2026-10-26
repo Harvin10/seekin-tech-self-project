@@ -1,6 +1,6 @@
 // Papan Prioritas service worker: keeps the app shell offline. Data (/api) always goes to the
 // network; the app keeps its own copy and an outbox in localStorage.
-const VERSION = 'pp-v1';
+const VERSION = 'pp-v2';
 const SHELL = [
   '/',
   '/app.css',
