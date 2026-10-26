@@ -1,63 +1,29 @@
-# Papan Prioritas
+# Seekin Tech Self Project
 
-Matriks Eisenhower, daftar tugas dan kalender dalam satu PWA. Berjalan di Cloudflare Pages dengan database D1, dan memakai design system Seekin ERP (token, Plus Jakarta Sans, bottom nav dengan tombol Tambah, header gaya e-wallet, sheet bawah).
+Personal apps, each in its own folder under `apps/`. Every app is its own Cloudflare Pages project with its own D1 database, so one app can be deployed, rolled back or deleted without touching the others.
 
-## Isi folder
+| App | Folder | What it does |
+|---|---|---|
+| Papan Prioritas | [`apps/papan-prioritas`](apps/papan-prioritas) | Eisenhower matrix, to-do list and calendar (PWA, login, D1) |
 
-| Path | Isi |
-|---|---|
-| `public/` | Semua yang diunggah ke Pages |
-| `public/_worker.js` | API (`/api/*`), login, header keamanan; menyajikan file statis lewat `env.ASSETS` |
-| `public/index.html`, `app.js`, `app.css`, `boot.js` | Aplikasi (tanpa build step) |
-| `public/sw.js`, `manifest.webmanifest`, `icons/` | PWA: bisa dipasang, terbuka saat offline |
-| `public/fonts/` | Plus Jakarta Sans (SIL OFL, lihat `OFL.txt`) |
-| `schema.sql` | Tabel D1 |
-| `wrangler.toml` | Nama proyek, binding D1 `DB`, variabel `ALLOW_SIGNUP` |
-| `CLAUDE.md` | Panduan untuk Claude saat mengelola data |
+## Deploying an app from GitHub
 
-## Deploy
+One Pages project per app:
 
-Database D1 `papan-prioritas` sudah dibuat di akun Cloudflare kamu dan tabelnya sudah terpasang. ID-nya sudah tertulis di `wrangler.toml`.
+1. In Cloudflare, go to **Workers & Pages → Create → Pages → Connect to Git** and pick this repo.
+2. Set **Root directory** to the app's folder, for example `apps/papan-prioritas`.
+3. Leave **Build command** empty and set **Build output directory** to `public`.
+4. Under **Build watch paths**, include only `apps/papan-prioritas/*`, so a push to another app does not redeploy this one.
 
-```sh
-npm install
-npx wrangler login
-npx wrangler pages project create papan-prioritas --production-branch main
-npm run deploy
-```
+Each app's own README has the details, including deploying from your computer with wrangler.
 
-Lalu buka `https://papan-prioritas.pages.dev`:
-
-1. Akun pertama yang dibuat menjadi pemilik papan.
-2. Setelah itu pendaftaran tertutup otomatis.
-3. Untuk menambah akun lain, ubah `ALLOW_SIGNUP` di `wrangler.toml` menjadi `"true"`, deploy, daftarkan akunnya, lalu kembalikan ke `"false"`.
-
-**Lewat GitHub:**
-1. Push folder ini ke repo.
-2. Di dashboard, pilih *Workers & Pages → Create → Pages → Connect to Git*.
-3. Isi *Build command* dengan kosong dan *Build output directory* dengan `public`.
-4. Binding D1 dibaca dari `wrangler.toml`.
-
-Hindari unggah drag-and-drop di dashboard. Cara itu tidak mendukung Functions, jadi pakai wrangler atau Git.
-
-## Coba di komputer
+## Local development
 
 ```sh
-npm run db:init:local
-npm run dev        # http://localhost:8788
+npm install            # installs wrangler for every app (npm workspaces)
+npm run dev:papan      # http://localhost:8788
 ```
 
-## Keamanan
+## Adding an app
 
-- **Kata sandi:** disimpan sebagai PBKDF2-SHA256 dengan 100.000 iterasi dan salt per akun.
-- **Sesi:** cookie `__Host-sid` (HttpOnly, Secure, SameSite=Lax), berlaku 30 hari. Yang disimpan di D1 hanya hash SHA-256 dari tokennya.
-- **Batas percobaan:** login dibatasi 8 kali gagal per 15 menit, per email dan per IP.
-- **Permintaan tulis:** ditolak kalau `Origin`-nya bukan situs ini, dan harus berupa JSON.
-- **Header keamanan:** CSP ketat tanpa inline script atau style, HSTS, `frame-ancestors 'none'`.
-- **Isolasi data:** setiap baris data dimiliki satu `user_id`. API tidak pernah membaca atau mengubah baris milik akun lain.
-
-## Offline
-
-- **Tampilan:** service worker menyimpan app shell, dan aplikasi menyimpan salinan data terakhir di perangkat.
-- **Perubahan saat offline:** masuk antrean dan dikirim berurutan begitu tersambung lagi. Di bilah atas muncul tanda *Offline · n*.
-- **Pembaruan:** saat ada versi baru, muncul banner *Versi baru siap → Muat ulang*. Naikkan `VERSION` di `sw.js` setiap kali kamu mengubah file aplikasi.
+See `CLAUDE.md`.

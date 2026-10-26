@@ -1,15 +1,12 @@
 {
-  "name": "papan-prioritas",
+  "name": "seekin-tech-self-project",
   "private": true,
-  "version": "1.0.0",
-  "description": "Matriks Eisenhower, daftar tugas dan kalender, di Cloudflare Pages + D1.",
+  "description": "Personal apps on Cloudflare, one folder per app under apps/.",
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
-    "dev": "wrangler pages dev",
-    "db:init:local": "wrangler d1 execute papan-prioritas --local --file=schema.sql",
-    "db:init": "wrangler d1 execute papan-prioritas --remote --file=schema.sql",
-    "deploy": "wrangler pages deploy"
-  },
-  "devDependencies": {
-    "wrangler": "^4.40.0"
+    "dev:papan": "npm run dev -w papan-prioritas",
+    "deploy:papan": "npm run deploy -w papan-prioritas"
   }
 }

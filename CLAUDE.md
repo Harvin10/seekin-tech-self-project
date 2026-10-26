@@ -1,44 +1,38 @@
-# Mengelola Papan Prioritas (untuk Claude)
+# Seekin Tech Self Project: guidance for Claude
 
-Data ada di Cloudflare D1, database `papan-prioritas`, id `76bb3874-85a8-4aab-98e0-bee27fb4b27b`. Pakai tool D1 query di konektor Cloudflare. Aplikasi memuat ulang data setiap 60 detik dan saat dibuka kembali, jadi perubahan langsung terlihat.
+A home for several small personal apps. Each app is self-contained in `apps/<app-name>/` and has its own `CLAUDE.md` with how to manage its data. Read that file before working on an app.
 
-## Tabel
+## Layout
 
-- `users(id, email, name, …)`: jangan sentuh kolom `pass_*`.
-- `tasks`:
-  - `id TEXT`: UUID baru untuk tugas baru.
-  - `user_id TEXT`
-  - `title TEXT`
-  - `notes TEXT`
-  - `quadrant TEXT`:
-    - `'q1'` Kerjakan (penting + mendesak)
-    - `'q2'` Jadwalkan (penting)
-    - `'q3'` Delegasikan (mendesak)
-    - `'q4'` Singkirkan
-    - `NULL` belum dipilah
-  - `due_date 'YYYY-MM-DD'`, `due_time 'HH:MM'`
-  - `delegate_to TEXT`: hanya diisi untuk q3.
-  - `done 0|1`, `done_at`
-  - `created_at`, `updated_at`
-- `events(id, user_id, title, date 'YYYY-MM-DD', start_time 'HH:MM', end_time 'HH:MM', notes, created_at, updated_at)`
+- **App folder:** `apps/<app-name>/` (kebab-case) holds:
+  - `public/`: what Pages serves, plus `_worker.js` when the app has an API.
+  - `wrangler.toml`: Pages project name, bindings, `pages_build_output_dir = "./public"`.
+  - `schema.sql`: if the app has a D1 database.
+  - `package.json`: name = the folder name, with `dev` and `deploy` scripts.
+  - `README.md` and `CLAUDE.md`.
+- **Workspaces:** the root `package.json` is an npm workspace over `apps/*`. Add `dev:<short>` and `deploy:<short>` scripts there for each new app.
+- **One app, one deploy:** each app is its own Cloudflare Pages project and its own D1 database. Apps never share a database or read each other's files.
 
-## Aturan
+## Adding an app
 
-- Tanggal dan jam memakai waktu lokal Asia/Jakarta. Timestamp memakai ISO-8601 UTC (`strftime('%Y-%m-%dT%H:%M:%fZ','now')`).
-- Selalu isi `user_id`. Ambil dari `SELECT id FROM users WHERE email = ?`.
-- Setiap UPDATE juga mengisi `updated_at`.
-- Hapus data hanya bila diminta.
+1. Create `apps/<app-name>/` with the files above.
+2. For a database, create a D1 named after the app with the Cloudflare connector, apply `schema.sql`, and put its id in the app's `wrangler.toml`.
+3. Add the app to the table in the root `README.md`.
+4. Add the root `dev:` and `deploy:` scripts.
 
-## Contoh
+## Conventions every app follows
 
-```sql
--- Tambah tugas Q1 untuk hari ini
-INSERT INTO tasks (id, user_id, title, quadrant, due_date, created_at, updated_at)
-SELECT lower(hex(randomblob(16))), id, 'Balas email investor', 'q1', date('now','+7 hours'),
-       strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now')
-FROM users WHERE email = '<email akun kamu>';
+- **UI:** follows the Seekin ERP design system: `docs/design-system.md` in `Harvin10/seekin-tech-erp`.
+  - Tokens, Plus Jakarta Sans, 48px targets, bottom nav with labels, and native `<dialog>` sheets that close on back.
+  - `apps/papan-prioritas/public/app.css` and `boot.js` hold a working copy of the tokens and the brand-colour logic. Start a new app from those.
+- **Copy:** casual Indonesian (*kamu*).
+- **No build step by default:** plain HTML, CSS and JS in `public/`.
+- **Login:** apps with login use the pattern in `apps/papan-prioritas/public/_worker.js`:
+  - PBKDF2 passwords and an HttpOnly `__Host-sid` session cookie whose hash is stored in D1.
+  - Sign-up is closed once the first account exists.
+- **CSP:** strict, without `'unsafe-inline'`. Runtime styles go through `element.style`; never write `style=""` or `<style>` in markup.
+- **PWA:** a manifest, icons and `sw.js`. Bump the cache `VERSION` in `sw.js` whenever app files change.
 
--- Pindahkan tugas yang lewat tenggat dari Q2 ke Q1
-UPDATE tasks SET quadrant = 'q1', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-WHERE done = 0 AND quadrant = 'q2' AND due_date < date('now','+7 hours');
-```
+## Commits
+
+Small commits scoped to one app, message prefixed with the app name, e.g. `papan-prioritas: add weekly view`.

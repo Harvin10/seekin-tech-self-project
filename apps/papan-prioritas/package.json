@@ -1,0 +1,15 @@
+{
+  "name": "papan-prioritas",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Matriks Eisenhower, daftar tugas dan kalender, di Cloudflare Pages + D1.",
+  "scripts": {
+    "dev": "wrangler pages dev",
+    "db:init:local": "wrangler d1 execute papan-prioritas --local --file=schema.sql",
+    "db:init": "wrangler d1 execute papan-prioritas --remote --file=schema.sql",
+    "deploy": "wrangler pages deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.40.0"
+  }
+}
