@@ -28,6 +28,8 @@ Data ada di Cloudflare D1, database `papan-prioritas`, id `76bb3874-85a8-4aab-98
 - Selalu isi `user_id`. Ambil dari `SELECT id FROM users WHERE email = ?`.
 - Setiap UPDATE juga mengisi `updated_at`.
 - Hapus data hanya bila diminta.
+- Tugas baru masuk `q4` kecuali diminta kuadran lain. Pemilik menyeretnya sendiri ke kuadran yang lebih penting.
+- Tugas dengan jam spesifik cukup diberi `due_date` dan `due_time`. Tugas itu langsung tampil di kalender.
 
 ## Contoh
 

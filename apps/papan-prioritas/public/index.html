@@ -69,6 +69,18 @@
     </div>
   </dialog>
 
+  <dialog class="modal" id="when" aria-labelledby="when-title" aria-describedby="when-text">
+    <form class="modal-panel" id="when-form" novalidate>
+      <h2 id="when-title">Jam berapa?</h2>
+      <p id="when-text"></p>
+      <div><label class="label" for="when-time">Jam</label><input class="field num" type="time" id="when-time"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn text pressable" id="when-skip">Tanpa jam</button>
+        <button type="submit" class="btn filled pressable">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
   <div class="snackbar-host" id="snackbar-host" role="status" aria-live="polite"></div>
 </body>
 </html>

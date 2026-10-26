@@ -6,6 +6,10 @@ Matriks Eisenhower, daftar tugas dan kalender dalam satu PWA. Berjalan di Cloudf
 
 - **Layar lebar (tablet mendatar, laptop, mulai 960px):** satu layar penuh. Matriks Eisenhower di kiri, daftar tugas di kanan atas, kalender di kanan bawah. Tombol layar penuh ada di bilah atas.
 - **HP:** empat tab di bawah: Matriks, Tugas, Kalender, Lainnya.
+- **Alur kerja:**
+  1. Tulis tugas di kolom atas daftar Tugas, lalu tekan Enter. Tugas baru masuk ke **Q4 Singkirkan**.
+  2. Seret ke kuadran lain kalau ternyata penting atau mendesak.
+  3. Perlu tanggal dan jam? Seret ke tanggal di kalender, lalu isi jamnya.
 - **Seret dan lepas:** di HP dan tablet, tahan tugas sebentar lalu geser. Di laptop, klik lalu geser.
   - Lepas di kuadran untuk memindahnya.
   - Lepas di *Belum dipilah* untuk mengeluarkannya dari kuadran.

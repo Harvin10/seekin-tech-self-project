@@ -518,3 +518,18 @@ html.board-mode main { padding: 0; }
 .side-day-h h3 { font-size: 14px; line-height: 20px; font-weight: 700; }
 .side-day .side-list { flex: 1; }
 @media (max-height: 760px) { .side-day { max-height: 150px; } .cal.compact .day { min-height: 38px; } .cal.compact .day .dn { width: 28px; height: 28px; } }
+
+/* quick add at the top of the to-do list */
+.quick-add { display: flex; gap: 8px; align-items: center; padding: 8px 0; }
+.side-todo .quick-add { padding: 12px 12px 4px 16px; }
+.quick-add .field { flex: 1; }
+.icon-btn.filled-ic { background: var(--brand); color: var(--on-brand); }
+/* On the board the snackbar sits over the top bar, so it never covers a quadrant or a drop target. */
+html.board-mode .snackbar-host { inset: calc(env(safe-area-inset-top) + 8px) 0 auto 0; }
+html.board-mode .snackbar { max-width: 520px; }
+@media (max-height: 860px) {
+  .side-day { max-height: 132px; }
+  .cal.compact .day { min-height: 34px; padding: 1px 0; }
+  .cal.compact .day .dn { width: 26px; height: 26px; font-size: 12px; }
+  .side-cal .cal-head .icon-btn { width: 40px; height: 40px; }
+}

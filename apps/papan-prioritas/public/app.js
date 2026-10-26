@@ -46,7 +46,7 @@
   /* ---------------- state ---------------- */
   const S = {
     user: null, tasks: [], events: [], loaded: false,
-    tab: 'matriks', listTab: 'hari-ini', qfilter: 'all',
+    tab: 'matriks', listTab: 'semua', qfilter: 'all',
     month: today().slice(0, 7), sel: today(),
     online: navigator.onLine, updateReady: null, installEvt: null,
   };
@@ -273,7 +273,8 @@
     let fields;
     if (kind === 'task') {
       const t = item || {};
-      const q = item ? t.quadrant : (p.quadrant ?? null);
+      // New tasks start in Q4; they are dragged to a more important quadrant when they earn it.
+      const q = item ? t.quadrant : (p.quadrant || 'q4');
       fields = `
         <div><label class="label" for="f-title">Judul</label><input class="field" id="f-title" name="title" value="${esc(t.title)}" maxlength="300" autocomplete="off" enterkeyhint="done" placeholder="Mau mengerjakan apa?"></div>
         <fieldset class="qfs" aria-label="Kuadran"><span class="label">Kuadran</span><div class="qpick">
@@ -380,8 +381,9 @@
   }
   const eventRow = (e) => `<li class="row event-row" data-eid="${e.id}"><span class="time-col">${e.start ? esc(e.start) + (e.end ? '–' + esc(e.end) : '') : 'Seharian'}</span><button type="button" class="row-main" data-act="edit-event" data-id="${e.id}"><span class="row-title">${esc(e.title)}</span>${e.notes ? `<span class="row-sub"><span class="meta">${icon('note', 'xs')}Catatan</span></span>` : ''}</button></li>`;
 
-  const LIST_LABELS = { 'hari-ini': 'Hari ini', terlambat: 'Terlambat', mendatang: 'Mendatang', 'tanpa-tanggal': 'Tanpa tanggal', selesai: 'Selesai' };
+  const LIST_LABELS = { semua: 'Semua', 'hari-ini': 'Hari ini', terlambat: 'Terlambat', mendatang: 'Mendatang', 'tanpa-tanggal': 'Tanpa tanggal', selesai: 'Selesai' };
   const EMPTY_LIST = {
+    semua: ['Belum ada tugas', 'Tulis tugas di kolom atas. Tugas baru masuk ke Q4 dulu.'],
     'hari-ini': ['Tidak ada yang jatuh tempo hari ini', 'Tugas dengan tenggat hari ini muncul di sini.'],
     terlambat: ['Tidak ada yang terlambat', 'Tugas yang lewat tenggat muncul di sini.'],
     mendatang: ['Belum ada tugas mendatang', 'Beri tenggat pada tugas supaya muncul di sini.'],
@@ -393,6 +395,7 @@
     const f = (arr) => (qfilter === 'none' ? arr.filter((x) => !x.quadrant) : qfilter === 'all' ? arr : arr.filter((x) => x.quadrant === qfilter));
     const o = f(open());
     return {
+      semua: o,
       'hari-ini': o.filter((x) => x.due === t),
       terlambat: o.filter((x) => x.due && x.due < t),
       mendatang: o.filter((x) => x.due && x.due > t),
@@ -421,7 +424,7 @@
       const tks = (tasksBy[s] || []).slice().sort((a, b) => a.done - b.done || qOrder(a) - qOrder(b));
       const items = compact ? [] : [
         ...evs.map((e) => `<span class="pill">${e.start ? esc(e.start) + ' ' : ''}${esc(e.title)}</span>`),
-        ...tks.map((x) => `<span class="pill ${x.quadrant || 'q4'} ${x.done ? 'done' : ''}">${esc(x.title)}</span>`),
+        ...tks.map((x) => `<span class="pill ${x.quadrant || 'q4'} ${x.done ? 'done' : ''}">${x.time ? esc(x.time) + ' ' : ''}${esc(x.title)}</span>`),
       ];
       const dots = [...evs.map(() => '<i class="ev"></i>'), ...tks.filter((x) => !x.done).map((x) => `<i class="${x.quadrant || 'q4'}"></i>`)].slice(0, 4).join('');
       const label = `${longDate(s)}${evs.length ? `, ${evs.length} acara` : ''}${tks.length ? `, ${tks.length} tugas` : ''}`;
@@ -430,10 +433,11 @@
         ${compact ? '' : `<span class="day-items">${items.slice(0, 3).join('')}${items.length > 3 ? `<span class="more">+${items.length - 3} lagi</span>` : ''}</span>`}</button>`;
     }
     const sel = S.sel;
+    // One timeline for the day: events and timed tasks by time, then tasks without a time.
     const rows = [
-      ...(evBy[sel] || []).slice().sort(evSort).map(eventRow),
-      ...(tasksBy[sel] || []).slice().sort((a, b) => a.done - b.done || qOrder(a) - qOrder(b)).map((x) => taskRow(x)),
-    ];
+      ...(evBy[sel] || []).map((e) => ({ at: e.start || '', html: eventRow(e), done: 0, q: -1 })),
+      ...(tasksBy[sel] || []).map((x) => ({ at: x.time || '~', html: taskRow(x), done: x.done ? 1 : 0, q: qOrder(x) })),
+    ].sort((a, b) => a.done - b.done || a.at.localeCompare(b.at) || a.q - b.q).map((r) => r.html);
     const head = `<div class="cal-head">
             <h2>${MONF[m - 1]} <span class="num">${y}</span></h2>
             <button type="button" class="btn text pressable" data-act="month-today">Hari ini</button>
@@ -525,7 +529,7 @@
     }
     return `
       ${topbar('Tugas')}
-      <div class="wrap"><div class="tabs scroll-row" role="tablist" aria-label="Status tugas">${tabs}</div>
+      <div class="wrap"><form class="quick-add" data-form="quick-add" autocomplete="off"><label class="sr-only" for="qa-title">Tugas baru</label><input class="field" id="qa-title" name="title" maxlength="300" enterkeyhint="done" placeholder="Tulis tugas, lalu Enter…"><button type="submit" class="icon-btn filled-ic pressable" aria-label="Tambah tugas">${icon('plus')}</button></form><div class="tabs scroll-row" role="tablist" aria-label="Status tugas">${tabs}</div>
       <div class="chips scroll-row" role="group" aria-label="Kuadran">${chips}</div></div>
       <main class="wrap stack">${banner()}<div class="stack">${body}</div></main>`;
   }
@@ -589,7 +593,8 @@
         </section>
         <aside class="board-side">
           <section class="side-card side-todo" aria-labelledby="side-todo-h">
-            <div class="side-h"><h2 id="side-todo-h">Tugas</h2></div>
+            <h2 id="side-todo-h" class="sr-only">Tugas</h2>
+            <form class="quick-add" data-form="quick-add" autocomplete="off"><label class="sr-only" for="qa-title">Tugas baru</label><input class="field" id="qa-title" name="title" maxlength="300" enterkeyhint="done" placeholder="Tulis tugas, lalu Enter…"><button type="submit" class="icon-btn filled-ic pressable" aria-label="Tambah tugas">${icon('plus')}</button></form>
             <div class="tabs scroll-row" role="tablist" aria-label="Status tugas">${listTabs(groups)}</div>
             <ul class="side-list" data-scroll="todo-${S.listTab}">${list.length ? list.slice(0, 200).map((x) => taskRow(x)).join('') : `<li class="empty-row">${EMPTY_LIST[S.listTab][0]}.</li>`}</ul>
           </section>
@@ -662,6 +667,8 @@
     if (DRAG.active) { renderLater = true; return; } // never swap the DOM under a finger mid-drag
     const a = document.activeElement;
     const keepId = a && a.dataset && a.dataset.act ? a.dataset.act + '|' + (a.dataset.id || a.dataset.k || a.dataset.tab || a.dataset.q || a.dataset.d || '') : null;
+    const keepInput = a && a.id && app.contains(a) && a.tagName === 'INPUT' ? { id: a.id, v: a.value, s: a.selectionStart } : null;
+    const qaDraft = $('#qa-title')?.value || '';
     // Lists in the board scroll on their own; keep their positions across re-renders.
     const scrolls = {};
     app.querySelectorAll('[data-scroll]').forEach((el) => { scrolls[el.dataset.scroll] = el.scrollTop; });
@@ -672,7 +679,11 @@
     app.querySelectorAll('[data-scroll]').forEach((el) => { if (scrolls[el.dataset.scroll]) el.scrollTop = scrolls[el.dataset.scroll]; });
     // Swatch colours are data, painted through the CSSOM (CSP allows no inline styles).
     app.querySelectorAll('[data-color]').forEach((el) => { el.style.background = el.dataset.color; });
-    if (keepId) {
+    if ($('#qa-title') && qaDraft) $('#qa-title').value = qaDraft;
+    if (keepInput) {
+      const el = document.getElementById(keepInput.id);
+      if (el) { el.value = keepInput.v; el.focus({ preventScroll: true }); try { el.setSelectionRange(keepInput.s, keepInput.s); } catch { /* type without selection */ } }
+    } else if (keepId) {
       const [act, key] = keepId.split('|');
       const el = [...app.querySelectorAll(`[data-act="${act}"]`)].find((x) => (x.dataset.id || x.dataset.k || x.dataset.tab || x.dataset.q || x.dataset.d || '') === key);
       el?.focus({ preventScroll: true });
@@ -697,7 +708,7 @@
       case 'toggle': toggleTask(b.dataset.id); break;
       case 'edit-task': { const t = S.tasks.find((x) => x.id === b.dataset.id); if (t) openEditor({ kind: 'task', item: t }); break; }
       case 'edit-event': { const ev = S.events.find((x) => x.id === b.dataset.id); if (ev) openEditor({ kind: 'event', item: ev }); break; }
-      case 'new-task': openEditor({ kind: 'task', preset: { quadrant: b.dataset.q || null, due: S.tab === 'kalender' ? S.sel : (S.tab === 'tugas' && S.listTab === 'hari-ini' ? today() : null) } }); break;
+      case 'new-task': openEditor({ kind: 'task', preset: { quadrant: b.dataset.q || 'q4', due: S.tab === 'kalender' ? S.sel : (S.tab === 'tugas' && S.listTab === 'hari-ini' ? today() : null) } }); break;
       case 'new-event': openEditor({ kind: 'event', preset: { date: b.dataset.d || (S.tab === 'kalender' ? S.sel : today()) } }); break;
       case 'go-today': S.listTab = 'hari-ini'; S.qfilter = 'all'; goTab('tugas'); break;
       case 'go-inbox': {
@@ -734,6 +745,42 @@
         break;
     }
   });
+  app.addEventListener('submit', (e) => {
+    if (e.target.dataset.form !== 'quick-add') return;
+    e.preventDefault();
+    const input = e.target.elements.title;
+    const title = input.value.trim();
+    if (!title) { input.focus(); return; }
+    input.value = '';
+    if (!['semua', 'tanpa-tanggal'].includes(S.listTab)) S.listTab = 'semua';
+    createTask({ title, quadrant: 'q4' });
+    snackbar('Masuk ke Q4. Seret ke kuadran lain kalau penting atau mendesak.');
+    $('#qa-title')?.focus();
+  });
+
+  /* "Jam berapa?" after a task is dropped on a calendar day */
+  const whenDlg = $('#when');
+  let whenTask = null;
+  function askTime(task, day) {
+    whenTask = task.id;
+    $('#when-text').textContent = `${task.title} · ${longDate(day)}`;
+    $('#when-time').value = task.time || '';
+    openOverlay(whenDlg);
+    setTimeout(() => $('#when-time').focus(), 60);
+  }
+  $('#when-skip').onclick = () => {
+    const t = S.tasks.find((x) => x.id === whenTask);
+    closeOverlay(whenDlg);
+    if (t && t.time) patchTask(t.id, { time: null });
+  };
+  $('#when-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const v = $('#when-time').value || null;
+    const t = S.tasks.find((x) => x.id === whenTask);
+    closeOverlay(whenDlg);
+    if (t && v !== (t.time || null)) { patchTask(t.id, { time: v }); snackbar(v ? `Dijadwalkan ${fmtDate(t.due)} jam ${v}.` : `Tenggat ${fmtDate(t.due)}, tanpa jam.`); }
+  });
+
   app.addEventListener('change', (e) => {
     const t = e.target;
     if (t.name === 'theme') { PP.setTheme(t.value); syncChrome(); }
@@ -801,7 +848,14 @@
         if (ev && ev.date !== day) { patchEvent(id, { date: day }); snackbar(`Acara dipindah ke ${fmtDate(day)}.`, 'Urungkan', () => patchEvent(id, { date: ev.date })); }
       } else {
         const tk = S.tasks.find((x) => x.id === id);
-        if (tk && tk.due !== day) { const was = tk.due; patchTask(id, { due: day }); snackbar(`Tenggat jadi ${fmtDate(day)}.`, 'Urungkan', () => patchTask(id, { due: was })); }
+        if (tk) {
+          const was = { due: tk.due || null, time: tk.time || null };
+          if (tk.due !== day) { patchTask(id, { due: day }); snackbar(`Tenggat jadi ${fmtDate(day)}.`, 'Urungkan', () => patchTask(id, was)); }
+          S.sel = day;
+          render();
+          askTime(tk, day);
+          return;
+        }
       }
       S.sel = day;
       render();
